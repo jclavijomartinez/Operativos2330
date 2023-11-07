@@ -21,33 +21,53 @@ void register_agent() {
 }
 
 // Función para leer y enviar solicitudes de reserva
-void send_reservations() {
+void send_reservations(const char *controller_pipe,
+                       const char *reservation_file) {
+  int pipe_fd;
   FILE *file = fopen(reservation_file, "r");
   char line[256];
-  int pipe_fd;
+
+  if (file == NULL) {
+    perror("Error opening file");
+    exit(EXIT_FAILURE);
+  }
+
+  // Abrir el pipe en modo escritura
+  pipe_fd = open(controller_pipe, O_WRONLY);
+  if (pipe_fd == -1) {
+    perror("Error opening pipe");
+    exit(EXIT_FAILURE);
+  }
 
   while (fgets(line, sizeof(line), file)) {
-    // Enviar cada línea al controlador como una solicitud de reserva
-    pipe_fd = open(controller_pipe, O_WRONLY);
-    write(pipe_fd, line, strlen(line) + 1);
-    close(pipe_fd);
+    // Enviar la solicitud al controlador
+    if (write(pipe_fd, line, strlen(line)) == -1) {
+      perror("Error writing to pipe");
+      break;
+    }
     sleep(2); // Esperar entre envíos
   }
 
+  close(pipe_fd);
   fclose(file);
 }
 
 // Punto de entrada principal
 int main(int argc, char *argv[]) {
-  // Inicializar las variables globales con los argumentos apropiados
-  agent_name = argv[1];
-  reservation_file = argv[2];
-  controller_pipe = argv[3];
+  if (argc != 4) {
+    fprintf(stderr,
+            "Usage: %s <agent_name> <reservation_file> <controller_pipe>\n",
+            argv[0]);
+    exit(EXIT_FAILURE);
+  }
 
-  // Registrar el agente con el controlador
-  register_agent();
-  // Leer y enviar las solicitudes de reserva
-  send_reservations();
+  const char *agent_name = argv[1];
+  const char *reservation_file = argv[2];
+  const char *controller_pipe = argv[3];
 
+  printf("Agent %s starting...\n", agent_name);
+  send_reservations(controller_pipe, reservation_file);
+
+  printf("Agent %s finished.\n", agent_name);
   return 0;
 }
