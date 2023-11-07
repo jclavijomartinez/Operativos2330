@@ -39,24 +39,26 @@ void send_reservations(const char *controller_pipe,
     exit(EXIT_FAILURE);
   }
 
+  printf("Enviando solicitudes de reserva...\n");
   while (fgets(line, sizeof(line), file)) {
+    printf("Enviando: %s", line);
     // Enviar la solicitud al controlador
     if (write(pipe_fd, line, strlen(line)) == -1) {
       perror("Error writing to pipe");
-      break;
+      exit(EXIT_FAILURE);
     }
-    sleep(2); // Esperar entre envíos
+    sleep(2); // Esperar 2 segundos entre envíos
   }
 
-  close(pipe_fd);
   fclose(file);
+  close(pipe_fd);
 }
 
 // Punto de entrada principal
 int main(int argc, char *argv[]) {
   if (argc != 4) {
     fprintf(stderr,
-            "Usage: %s <agent_name> <reservation_file> <controller_pipe>\n",
+            "Uso: %s <nombre_agente> <archivo_solicitudes> <nombre_pipe>\n",
             argv[0]);
     exit(EXIT_FAILURE);
   }
@@ -65,9 +67,9 @@ int main(int argc, char *argv[]) {
   const char *reservation_file = argv[2];
   const char *controller_pipe = argv[3];
 
-  printf("Agent %s starting...\n", agent_name);
+  printf("Agente %s iniciado.\n", agent_name);
   send_reservations(controller_pipe, reservation_file);
 
-  printf("Agent %s finished.\n", agent_name);
+  printf("Agente %s terminado.\n", agent_name);
   return 0;
 }

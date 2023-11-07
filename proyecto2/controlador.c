@@ -36,20 +36,24 @@ void initialize_controller(int start_hour, int total_capacity, char *pipe) {
     perror("mkfifo");
     exit(EXIT_FAILURE);
   }
+  printf("Controlador inicializado. Pipe creado: %s\n", pipe_name);
 }
 
 // Función para manejar el paso del tiempo
 void *time_handler(void *args) {
+  printf("Manejador de tiempo iniciado.\n");
   while (park_status.current_time < 24) {
     sleep(1); // Simula una hora con sleep
     park_status.current_time++;
-    printf("Current simulated hour: %d\n", park_status.current_time);
+    printf("Hora actual simulada: %d\n", park_status.current_time);
   }
+  printf("Manejador de tiempo terminado.\n");
   return NULL;
 }
 
 // Función para escuchar y procesar las solicitudes de los agentes
 void *agent_listener(void *args) {
+  printf("Escuchando agentes...\n");
   int pipe_fd;
   char buffer[1024];
 
@@ -64,7 +68,7 @@ void *agent_listener(void *args) {
     ssize_t read_bytes = read(pipe_fd, buffer, sizeof(buffer) - 1);
     if (read_bytes > 0) {
       buffer[read_bytes] = '\0';
-      printf("Received reservation request: %s\n", buffer);
+      printf("Solicitud de reserva recibida: %s\n", buffer);
       // Aquí se debería procesar la solicitud y tomar acciones
     }
   }
@@ -79,8 +83,8 @@ int main(int argc, char *argv[]) {
 
   if (argc != 6) {
     fprintf(stderr,
-            "Usage: %s <start_hour> <end_hour> <seconds_per_hour> "
-            "<total_capacity> <pipe_name>\n",
+            "Uso: %s <hora_inicio> <hora_fin> <segundos_por_hora> "
+            "<capacidad_total> <nombre_pipe>\n",
             argv[0]);
     exit(EXIT_FAILURE);
   }
@@ -99,6 +103,7 @@ int main(int argc, char *argv[]) {
   pthread_join(time_thread, NULL);
   pthread_join(agent_thread, NULL);
 
+  printf("Controlador finalizando...\n");
   unlink(pipe_name); // Remove the FIFO file
 
   return 0;
