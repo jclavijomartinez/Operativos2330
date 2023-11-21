@@ -1,3 +1,17 @@
+/****************************************************************
+ * Fecha: 20-11-2023
+ * Autores: 
+ *  - Juan Sebastian Clavijo Martinez (jsebastian.clavijoc@javeriana.edu.co), 
+ *  - Santiago Mesa Niño (santiagoa.mesan@javeriana.edu.co), 
+ *  - Juliana Lugo Martínez (julugo@javeriana.edu.co)
+ *  - Juan Camilo Martínez ()
+ *  - Juan David Castilo ()
+ *  - Juan Daniel Vargas ()
+ * Tema: proyecto 1
+ * Objetivo: 
+ ***************************************************************/
+
+
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
