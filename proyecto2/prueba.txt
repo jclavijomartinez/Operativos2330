@@ -11,7 +11,7 @@ Ramirez,13,5
 Torres,15,9
 Gutierrez,17,6
 Sanchez,19,4
-Luna,20,8
+Luna,16,8
 Moreno,7,10
 Soto,10,6
 Hernandez,14,4
@@ -26,5 +26,5 @@ Navarro,12,7
 Vargas,14,10
 Jimenez,16,4
 Reyes,18,6
-Ortega,20,9
+Ortega,10,9
 Acosta,7,8

@@ -14,7 +14,7 @@ Diaz,7,7
 Gutierrez,11,4
 Alvarez,13,9
 Navarro,15,5
-Suarez,20,3
+Suarez,10,3
 Torres,8,6
 Moreno,10,7
 Rivera,14,5
