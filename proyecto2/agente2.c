@@ -10,24 +10,26 @@ struct DatosSolicitud {
   char nombre[50];
   int hora;
   int numPersonas;
-  int respuesta;  // 0: denegada, 1: positiva, 2: reprogramación
-  int horaActual; // Agregado para sincronizar la hora actual
+  int respuesta; // 0: denegada, 1: positiva, 2: reprogramación
+  int horaActual;
+  int horaCierre;
 };
 
 int horaActual; // Declaración de la variable global horaActual
 
 int main(int argc, char *argv[]) {
   // Variables para recibir los datos del comando.
-  int nombre = -1, archivo = -1, nomPipe = -1;
+  int nombre = -1, archivo = -1, nomPipe = -1, horaCierre = -1;
 
   // Se necesitan 3 argumentos para ejecutarse correctamente.
-  if (argc != 7) {
-    printf("Uso: ./agente –s nombre –a archivosolicitudes –p pipecrecibe\n");
+  if (argc != 9) {
+    printf("Uso: ./agente –s nombre –a archivosolicitudes –p pipecrecibe -c "
+           "horacierre\n");
     exit(1);
   }
 
   // Se revisan los argumentos para obtener todos los datos necesarios.
-  for (int i = 1; i < 7; i += 2) {
+  for (int i = 1; i < 9; i += 2) {
     if (strcmp(argv[i], "-s") == 0) {
       nombre = i + 1;
     }
@@ -36,6 +38,10 @@ int main(int argc, char *argv[]) {
     }
     if (strcmp(argv[i], "-p") == 0) {
       nomPipe = i + 1;
+    }
+    if (strcmp(argv[i], "-c") == 0) {
+      horaCierre =
+          atoi(argv[i + 1]); // Lee la hora de cierre desde la línea de comandos
     }
   }
 
@@ -84,9 +90,9 @@ int main(int argc, char *argv[]) {
     sscanf(linea, "%[^,],%d,%d", nomFamilia, &hora, &numPersonas);
 
     // Validación de la hora de reserva
-    if (hora < horaActual) {
+    if (hora < horaActual || hora >= horaCierre) {
       printf("Error: La hora de reserva es anterior a la hora actual de "
-             "simulación.\n");
+             "simulación o después del cierre.\n");
       continue; // Salta a la siguiente iteración del bucle
     }
 
@@ -95,6 +101,7 @@ int main(int argc, char *argv[]) {
     strcpy(datosSolicitud.nombre, nomFamilia);
     datosSolicitud.hora = hora;
     datosSolicitud.numPersonas = numPersonas;
+    datosSolicitud.horaCierre = horaCierre;
 
     // Envío de la solicitud
     write(pipe_fd, &datosSolicitud, sizeof(struct DatosSolicitud));

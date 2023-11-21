@@ -25,8 +25,9 @@ struct DatosSolicitud {
   char nombre[50];
   int hora;
   int numPersonas;
-  int respuesta;  // 0: denegada, 1: positiva, 2: reprogramación
-  int horaActual; // Agregado para sincronizar la hora actual
+  int respuesta; // 0: denegada, 1: positiva, 2: reprogramación
+  int horaActual;
+  int horaCierre;
 };
 
 int horaActual;
@@ -113,6 +114,7 @@ void *recibirSolicitud(void *datosPipe) {
 
       // Agregando la hora actual a la respuesta
       datosSolicitud.horaActual = horaActual;
+      datosSolicitud.horaCierre = horaFinal;
 
       // Respondiendo al agente
       write(pipe_fd, &datosSolicitud, sizeof(struct DatosSolicitud));
