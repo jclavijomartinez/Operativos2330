@@ -1,10 +1,3 @@
-/****************************************************************
- * Fecha: X - Octubre - 2023
- * Autor: Juan Sebastian Clavijo Martinez
- * Tema:
- * Objetivo:
- ***************************************************************/
-
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
@@ -12,99 +5,216 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
-// Definición de la estructura para mantener el estado del parque
-struct ParkStatus {
-  int current_time;
-  int max_capacity;
-  int current_capacity;
+struct DatosEspera {
+  int horaI;
+  int horaF;
+  int segHora;
 };
 
-// Variables globales
-struct ParkStatus park_status;
-char *pipe_name;
+struct DatosPipe {
+  int horaF;
+  char *pipeName;
+};
 
-// Función para inicializar el controlador
-void initialize_controller(int start_hour, int total_capacity, char *pipe) {
-  park_status.current_time = start_hour;
-  park_status.max_capacity = total_capacity;
-  park_status.current_capacity = 0;
-  pipe_name = pipe;
-  // Crear el pipe
-  if (mkfifo(pipe_name, 0666) == -1) {
-    perror("mkfifo");
-    exit(EXIT_FAILURE);
+struct DatosSolicitud {
+  char nombre[50];
+  int hora;
+  int numPersonas;
+  int respuesta; // Nueva variable para la respuesta al agente (0: denegada, 1:
+                 // positiva, 2: reprogramación)
+};
+
+int horaActual;
+int personasEnParque = 0;
+int numVisitantesPorHora[24];
+int solicitudesNegadas = 0;
+int solicitudesReprogramadas = 0;
+int totalPersonas;
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void *esperaHora(void *datosEspera) {
+  struct DatosEspera *datos = (struct DatosEspera *)datosEspera;
+
+  horaActual = datos->horaI;
+  int horaFinal = datos->horaF;
+
+  printf("Hora de inicio: %d\n", horaActual);
+  printf("Hora final: %d\n", horaFinal);
+
+  while (horaActual < horaFinal) {
+    sleep(datos->segHora);
+    horaActual++;
+
+    printf("Hora Actual: %d\n", horaActual);
+
+    pthread_mutex_lock(&mutex);
+    numVisitantesPorHora[horaActual % 24] = 0;
+    pthread_mutex_unlock(&mutex);
   }
-  printf("Controlador inicializado. Pipe creado: %s\n", pipe_name);
+
+  pthread_exit(NULL);
 }
 
-// Función para manejar el paso del tiempo
-void *time_handler(void *args) {
-  printf("Manejador de tiempo iniciado.\n");
-  while (park_status.current_time < 24) {
-    sleep(1); // Simula una hora con sleep
-    park_status.current_time++;
-    printf("Hora actual simulada: %d\n", park_status.current_time);
-  }
-  printf("Manejador de tiempo terminado.\n");
-  return NULL;
-}
+void *recibirSolicitud(void *datosPipe) {
+  struct DatosPipe *datos = (struct DatosPipe *)datosPipe;
 
-// Función para escuchar y procesar las solicitudes de los agentes
-void *agent_listener(void *args) {
-  printf("Escuchando agentes...\n");
-  int pipe_fd;
-  char buffer[1024];
+  int pipe_fd = open(datos->pipeName, O_RDONLY);
 
-  // Abrir el pipe en modo lectura
-  pipe_fd = open(pipe_name, O_RDONLY);
   if (pipe_fd == -1) {
-    perror("Error opening pipe");
-    exit(EXIT_FAILURE);
+    perror("Error al abrir el pipe");
+    exit(1);
   }
 
-  while (1) {
-    ssize_t read_bytes = read(pipe_fd, buffer, sizeof(buffer) - 1);
-    if (read_bytes > 0) {
-      buffer[read_bytes] = '\0';
-      printf("Solicitud de reserva recibida: %s\n", buffer);
-      // Aquí se debería procesar la solicitud y tomar acciones
+  struct DatosSolicitud datosSolicitud;
+
+  while (read(pipe_fd, &datosSolicitud, sizeof(struct DatosSolicitud)) > 0) {
+    pthread_mutex_lock(&mutex);
+
+    if (datosSolicitud.hora < horaActual) {
+      // Nueva asignación de respuesta para la solicitud
+      datosSolicitud.respuesta = 0; // Denegada
+      printf("Solicitud denegada: %s, Hora: %d, Personas: %d (Hora inválida)\n",
+             datosSolicitud.nombre, datosSolicitud.hora,
+             datosSolicitud.numPersonas);
+      solicitudesNegadas++;
+    } else {
+      if (numVisitantesPorHora[datosSolicitud.hora] +
+              datosSolicitud.numPersonas <=
+          totalPersonas) {
+        numVisitantesPorHora[datosSolicitud.hora] += datosSolicitud.numPersonas;
+        personasEnParque += datosSolicitud.numPersonas;
+        // Nueva asignación de respuesta para la solicitud
+        datosSolicitud.respuesta = 1; // Positiva
+        printf("Solicitud autorizada: %s, Hora: %d, Personas: %d\n",
+               datosSolicitud.nombre, datosSolicitud.hora,
+               datosSolicitud.numPersonas);
+      } else {
+        // Nueva asignación de respuesta para la solicitud
+        datosSolicitud.respuesta = 2; // Reprogramación
+        solicitudesReprogramadas++;
+        printf("Solicitud reprogramada: %s, Hora: %d, Personas: %d (Capacidad "
+               "excedida)\n",
+               datosSolicitud.nombre, datosSolicitud.hora,
+               datosSolicitud.numPersonas);
+      }
     }
+
+    // Nueva escritura al pipe con la respuesta al agente
+    write(pipe_fd, &datosSolicitud, sizeof(struct DatosSolicitud));
+
+    pthread_mutex_unlock(&mutex);
   }
 
   close(pipe_fd);
-  return NULL;
+  printf("El hilo de solicitudes se ha cerrado\n");
+  pthread_exit(NULL);
 }
 
-// Punto de entrada principal
 int main(int argc, char *argv[]) {
-  pthread_t time_thread, agent_thread;
+  int horaI = -1, horaF = -1, segHora = -1, nomPipe = -1;
 
-  if (argc != 6) {
-    fprintf(stderr,
-            "Uso: %s <hora_inicio> <hora_fin> <segundos_por_hora> "
-            "<capacidad_total> <nombre_pipe>\n",
-            argv[0]);
+  if (argc != 11) {
+    printf("Uso: ./controlador –i horaInicio –f horafinal –s segundoshora –t "
+           "totalpersonas –p pipecrecibe\n");
+    exit(1);
+  }
+
+  for (int i = 1; i < 11; i += 2) {
+    if (strcmp(argv[i], "-i") == 0) {
+      horaI = atoi(argv[i + 1]);
+    }
+    if (strcmp(argv[i], "-f") == 0) {
+      horaF = atoi(argv[i + 1]);
+    }
+    if (strcmp(argv[i], "-s") == 0) {
+      segHora = atoi(argv[i + 1]);
+    }
+    if (strcmp(argv[i], "-t") == 0) {
+      totalPersonas = atoi(argv[i + 1]);
+    }
+    if (strcmp(argv[i], "-p") == 0) {
+      nomPipe = i + 1;
+    }
+  }
+
+  if (horaI == 0 || horaF == 0 || segHora == 0 || totalPersonas == 0 ||
+      nomPipe == 0) {
+    printf("Algunos de los argumentos no son validos.\n");
+    exit(1);
+  }
+
+  if (horaI == -1 || horaF == -1 || segHora == -1 || totalPersonas == -1 ||
+      nomPipe == -1) {
+    printf("Falta al menos un argumento.\n");
+    exit(1);
+  }
+
+  if (horaI >= horaF) {
+    printf("La hora final debe ser mayor que la hora de inicio.\n");
+    exit(1);
+  }
+
+  printf("\nHora de inicio: %d\n", horaI);
+  printf("Hora final: %d\n", horaF);
+  printf("Segundos por hora: %d\n", segHora);
+  printf("Total de personas: %d\n", totalPersonas);
+  printf("Nombre del pipe: %s\n\n\n", argv[nomPipe]);
+
+  pthread_t hilo_tiempo, hilo_solicitudes;
+
+  struct DatosEspera datosEspera;
+  datosEspera.horaI = horaI;
+  datosEspera.horaF = horaF;
+  datosEspera.segHora = segHora;
+
+  if (pthread_create(&hilo_tiempo, NULL, esperaHora, (void *)&datosEspera) !=
+      0) {
+    perror("Error al crear el hilo de espera");
     exit(EXIT_FAILURE);
   }
 
-  int start_hour = atoi(argv[1]);
-  int end_hour = atoi(argv[2]);
-  int seconds_per_hour = atoi(argv[3]);
-  int total_capacity = atoi(argv[4]);
-  char *pipe_name = argv[5];
+  struct DatosPipe datosPipe;
+  datosPipe.horaF = horaF;
+  datosPipe.pipeName = argv[nomPipe];
 
-  initialize_controller(start_hour, total_capacity, pipe_name);
+  if (pthread_create(&hilo_solicitudes, NULL, recibirSolicitud,
+                     (void *)&datosPipe) != 0) {
+    perror("Error al crear el hilo del pipe");
+    exit(EXIT_FAILURE);
+  }
 
-  pthread_create(&time_thread, NULL, time_handler, NULL);
-  pthread_create(&agent_thread, NULL, agent_listener, NULL);
+  pthread_join(hilo_tiempo, NULL);
+  pthread_join(hilo_solicitudes, NULL);
 
-  pthread_join(time_thread, NULL);
-  pthread_join(agent_thread, NULL);
+  int personasPromedioPorHora = 0;
+  int horaMasConcurrida = -1;
+  int maxPersonasEnHora = 0;
 
-  printf("Controlador finalizando...\n");
-  unlink(pipe_name); // Remove the FIFO file
+  printf("\nReporte final:\n");
+  printf("Total de personas en el parque: %d\n", personasEnParque);
+
+  for (int i = 0; i < 24; i++) {
+    personasPromedioPorHora += numVisitantesPorHora[i];
+
+    if (numVisitantesPorHora[i] > maxPersonasEnHora) {
+      maxPersonasEnHora = numVisitantesPorHora[i];
+      horaMasConcurrida = i;
+    }
+
+    printf("Hora %d: %d personas\n", i, numVisitantesPorHora[i]);
+  }
+
+  personasPromedioPorHora /= (horaF - horaI);
+
+  printf("\nPersonas promedio por hora: %d\n", personasPromedioPorHora);
+  printf("Hora más concurrida: %d con %d personas\n", horaMasConcurrida,
+         maxPersonasEnHora);
+  printf("Solicitudes denegadas: %d\n", solicitudesNegadas);
+  printf("Solicitudes reprogramadas: %d\n", solicitudesReprogramadas);
 
   return 0;
 }
