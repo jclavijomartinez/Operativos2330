@@ -25,8 +25,8 @@ struct DatosSolicitud {
   char nombre[50];
   int hora;
   int numPersonas;
-  int respuesta; // Nueva variable para la respuesta al agente (0: denegada, 1:
-                 // positiva, 2: reprogramación)
+  int respuesta;  // 0: denegada, 1: positiva, 2: reprogramación
+  int horaActual; // Agregado para sincronizar la hora actual
 };
 
 int horaActual;
@@ -71,7 +71,6 @@ void *recibirSolicitud(void *datosPipe) {
   int horaFinal = datos->horaF;
 
   mkfifo(datos->pipeName, 0666);
-
   int pipe_fd = open(datos->pipeName, O_RDONLY);
 
   if (pipe_fd == -1) {
@@ -81,42 +80,29 @@ void *recibirSolicitud(void *datosPipe) {
 
   struct DatosSolicitud datosSolicitud;
 
-  while (horaActual < horaFinal ||
-         read(pipe_fd, &datosSolicitud, sizeof(struct DatosSolicitud)) > 0) {
-    if (horaActual < horaFinal) {
-      struct timespec tiempoEspera;
-      tiempoEspera.tv_sec = datos->segHora;
-      tiempoEspera.tv_nsec = 0;
+  while (horaActual < horaFinal) {
+    if (read(pipe_fd, &datosSolicitud, sizeof(struct DatosSolicitud)) > 0) {
+      pthread_mutex_lock(&mutex);
 
-      nanosleep(&tiempoEspera, NULL);
-      horaActual++;
-      printf("Hora Actual: %d\n", horaActual);
-    }
-
-    pthread_mutex_lock(&mutex);
-
-    if (datosSolicitud.hora < horaActual) {
-      // Nueva asignación de respuesta para la solicitud
-      datosSolicitud.respuesta = 0; // Denegada
-      printf("Solicitud denegada: %s, Hora: %d, Personas: %d (Hora inválida)\n",
-             datosSolicitud.nombre, datosSolicitud.hora,
-             datosSolicitud.numPersonas);
-      solicitudesNegadas++;
-    } else {
-      // Verificar la capacidad antes de autorizar la solicitud
-      if (numVisitantesPorHora[datosSolicitud.hora % 24] +
-              datosSolicitud.numPersonas <=
-          totalPersonas) {
+      // Procesamiento de la solicitud
+      if (datosSolicitud.hora < horaActual) {
+        datosSolicitud.respuesta = 0; // Denegada
+        printf(
+            "Solicitud denegada: %s, Hora: %d, Personas: %d (Hora inválida)\n",
+            datosSolicitud.nombre, datosSolicitud.hora,
+            datosSolicitud.numPersonas);
+        solicitudesNegadas++;
+      } else if (numVisitantesPorHora[datosSolicitud.hora % 24] +
+                     datosSolicitud.numPersonas <=
+                 totalPersonas) {
         numVisitantesPorHora[datosSolicitud.hora % 24] +=
             datosSolicitud.numPersonas;
         personasEnParque += datosSolicitud.numPersonas;
-        // Nueva asignación de respuesta para la solicitud
         datosSolicitud.respuesta = 1; // Positiva
         printf("Solicitud autorizada: %s, Hora: %d, Personas: %d\n",
                datosSolicitud.nombre, datosSolicitud.hora,
                datosSolicitud.numPersonas);
       } else {
-        // Nueva asignación de respuesta para la solicitud
         datosSolicitud.respuesta = 2; // Reprogramación
         solicitudesReprogramadas++;
         printf("Solicitud reprogramada: %s, Hora: %d, Personas: %d (Capacidad "
@@ -124,23 +110,17 @@ void *recibirSolicitud(void *datosPipe) {
                datosSolicitud.nombre, datosSolicitud.hora,
                datosSolicitud.numPersonas);
       }
+
+      // Agregando la hora actual a la respuesta
+      datosSolicitud.horaActual = horaActual;
+
+      // Respondiendo al agente
+      write(pipe_fd, &datosSolicitud, sizeof(struct DatosSolicitud));
+      pthread_mutex_unlock(&mutex);
     }
-
-    // Nueva escritura al pipe con la respuesta al agente
-    write(pipe_fd, &datosSolicitud, sizeof(struct DatosSolicitud));
-
-    pthread_mutex_unlock(&mutex);
   }
 
   close(pipe_fd);
-
-  if (horaActual >= horaFinal) {
-    printf("Se han leído todos los datos del pipe.\n");
-  } else {
-    printf("El hilo de solicitudes se ha cerrado debido a un error o "
-           "finalización prematura.\n");
-  }
-
   printf("El hilo de solicitudes se ha cerrado\n");
   pthread_exit(NULL);
 }

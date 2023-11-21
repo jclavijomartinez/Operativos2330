@@ -10,7 +10,8 @@ struct DatosSolicitud {
     char nombre[50];
     int hora;
     int numPersonas;
-    int respuesta; // Nueva variable para la respuesta del controlador (0: denegada, 1: positiva, 2: reprogramación)
+    int respuesta; // 0: denegada, 1: positiva, 2: reprogramación
+    int horaActual; // Agregado para sincronizar la hora actual
 };
 
 int horaActual;  // Declaración de la variable global horaActual
