@@ -211,18 +211,18 @@ int main(int argc, char *argv[]) {
   printf("\nReporte final:\n");
   printf("Total de personas en el parque: %d\n", personasEnParque);
 
-  for (int i = 0; i < 24; i++) {
-    personasPromedioPorHora += numVisitantesPorHora[i];
+  for (int i = horaI; i <= horaF; i++) {
+    personasPromedioPorHora += numVisitantesPorHora[i % 24];
 
-    if (numVisitantesPorHora[i] > maxPersonasEnHora) {
-      maxPersonasEnHora = numVisitantesPorHora[i];
-      horaMasConcurrida = i;
+    if (numVisitantesPorHora[i % 24] > maxPersonasEnHora) {
+      maxPersonasEnHora = numVisitantesPorHora[i % 24];
+      horaMasConcurrida = i % 24;
     }
 
-    printf("Hora %d: %d personas\n", i, numVisitantesPorHora[i]);
+    printf("Hora %d: %d personas\n", i % 24, numVisitantesPorHora[i % 24]);
   }
 
-  personasPromedioPorHora /= (horaF - horaI);
+  personasPromedioPorHora /= (horaF - horaI + 1);
 
   printf("\nPersonas promedio por hora: %d\n", personasPromedioPorHora);
   printf("Hora más concurrida: %d con %d personas\n", horaMasConcurrida,
